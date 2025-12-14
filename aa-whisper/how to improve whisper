@@ -1,0 +1,2897 @@
+hi so i have these 2 websites  ones a msging website the other one is for calling they are both kinda the same its just i dont want ot change websites to call so i want to put the caslling features inside my msging website please tell me wehat code u need and tell me what new files to create.     so here is the code for the first wqebsite this is the website we ar5e taking the features from called echo :here is the app.js:document.addEventListener('DOMContentLoaded', function() {
+    // ====================================================================================================
+    // FIREBASE AND WEBRTC INITIALIZATION
+    // ====================================================================================================
+   
+    // Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyBnyx167FxrE6RKOpCg2g87zIp_dThvS2s",
+        authDomain: "aa-echo.firebaseapp.com",
+        projectId: "aa-echo",
+        storageBucket: "aa-echo.firebasestorage.app",
+        messagingSenderId: "1032881843806",
+        appId: "1:1032881843806:web:f1f0d73a96f9e256298ecf",
+        measurementId: "G-3SDT9J79VP"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const database = firebase.database();
+
+// WebRTC configuration
+const configuration = {
+iceServers: [
+{ urls: 'stun:stun.l.google.com:19302' },
+{ urls: 'stun:stun1.l.google.com:19302' },
+{ urls: 'stun:stun2.l.google.com:19302' },
+{ urls: 'stun:stun3.l.google.com:19302' },
+{
+urls: 'turn:turn.cloudflare.com:3478',
+username: 'test',
+credential: 'test'
+}
+]
+};
+
+    // Set auth persistence
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .then(() => {
+            console.log("📎✔️ Auth persistence set to LOCAL.");
+        })
+        .catch((error) => {
+            console.error("📎❌ Error setting auth persistence:", error);
+        });
+
+
+    // ====================================================================================================
+    // GLOBAL VARIABLES AND STATE MANAGEMENT
+    // ====================================================================================================
+   
+    console.log("%c welcome to echo! ", 'font-size: 30px; background: linear-gradient(135deg, #1a1a2e, #294752); border: 1px solid #fff; border-radius: 30px; font-weight: 1000;');
+   
+    // DOM elements
+    const authContainer = document.getElementById('auth-container');
+    const appMain = document.getElementById('app-main');
+    const guestTab = document.getElementById('guest-tab');
+    const accountTab = document.getElementById('account-tab');
+    const guestPanel = document.getElementById('guest-panel');
+    const accountPanel = document.getElementById('account-panel');
+    const signupPanel = document.getElementById('signup-panel');
+    const usernamePanel = document.getElementById('username-panel');
+    const guestUsername = document.getElementById('guest-username');
+    const guestLoginBtn = document.getElementById('guest-login-btn');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const loginBtn = document.getElementById('login-btn');
+    const signupEmail = document.getElementById('signup-email');
+    const signupPassword = document.getElementById('signup-password');
+    const displayName = document.getElementById('display-name');
+    const signupBtn = document.getElementById('signup-btn');
+    const chooseUsername = document.getElementById('choose-username');
+    const setUsernameBtn = document.getElementById('set-username-btn');
+    const showSignup = document.getElementById('show-signup');
+    const showLogin = document.getElementById('show-login');
+    const resetPasswordBtn = document.getElementById('reset-password-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const userName = document.getElementById('user-name');
+    const userAvatar = document.getElementById('user-avatar');
+    const contactsList = document.getElementById('contacts-list');
+    const callStatus = document.getElementById('current-call-name');
+    const localVideo = document.getElementById('local-video');
+    const remoteVideo = document.getElementById('remote-video');
+    const remoteVideoLabel = document.getElementById('remote-video-label');
+    const muteBtn = document.getElementById('mute-btn');
+    const videoBtn = document.getElementById('video-btn');
+    const endCallBtn = document.getElementById('end-call-btn');
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.getElementById('sidebar');
+   
+    // Email verification elements
+    const emailVerificationIcon = document.getElementById('email-verification-icon');
+    const verificationIcon = document.getElementById('verification-icon');
+    const tooltipStatus = document.getElementById('tooltip-status');
+    const tooltipEmail = document.getElementById('tooltip-email');
+    const verifyEmailBtn = document.getElementById('verify-email-btn');
+   
+    // State variables
+    let currentUser = null;
+    let localStream = null;
+    let remoteStream = null;
+    let peerConnection = null;
+    let currentCall = null;
+    let isMuted = false;
+    let isVideoOff = false;
+    let allUsers = {};
+    let collapsedSections = {};
+
+    // Screen sharing variables
+    let screenShareStream = null;
+    let isScreenSharing = false;
+    let originalVideoTrack = null;
+
+// ====================================================================================================
+
+// Add this after the DOM elements section
+const debugPlayBtn = document.createElement('button');
+debugPlayBtn.textContent = 'Debug: Play Video';
+debugPlayBtn.style.position = 'fixed';
+debugPlayBtn.style.bottom = '10px';
+debugPlayBtn.style.right = '10px';
+debugPlayBtn.style.zIndex = '9999';
+debugPlayBtn.style.padding = '10px';
+debugPlayBtn.style.backgroundColor = '#ff0000';
+debugPlayBtn.style.color = '#ffffff';
+debugPlayBtn.style.border = 'none';
+debugPlayBtn.style.borderRadius = '5px';
+debugPlayBtn.style.cursor = 'pointer';
+document.body.appendChild(debugPlayBtn);
+
+debugPlayBtn.addEventListener('click', () => {
+if (remoteVideo && remoteVideo.srcObject) {
+console.log("Manual play attempt");
+remoteVideo.load();
+remoteVideo.play().catch(e => {
+console.error("Manual play failed:", e);
+});
+}
+});
+
+// ====================================================================================================
+// UTILITY FUNCTIONS
+// ====================================================================================================
+
+// Activity helper ig
+document.addEventListener('click', function() {
+// Check if we have a remote video that's not playing
+if (remoteVideo && remoteVideo.srcObject && remoteVideo.paused) {
+// Try to reload the video element first
+if (remoteVideo.readyState === 0) {
+console.log("Reloading video element after user interaction");
+remoteVideo.load();
+}
+
+// Then try to play
+remoteVideo.play().catch(e => {
+console.log("Could not resume video after user interaction:", e);
+});
+}
+}, { once: false });
+
+// Structured logging helper with optional color-coding
+function log(message, level = 0, feature = null) {
+const indent = '    '.repeat(level);
+let color = 'inherit'; // default color
+let borderLeft = 'transparent'; // default border
+
+// Assign colors based on feature
+if (feature === 'auth') {
+color = '#3498db';
+borderLeft = '#3498db', '3px'; // Blue
+}
+if (feature === 'admin') {
+color = '#9b59b6';
+borderLeft = '#9b59b6', '3px'; // Purple
+}
+if (feature === 'message') {
+color = '#2ecc71';
+borderLeft = '#2ecc71', '3px'; // Green
+}
+if (feature === 'call') {
+color = '#e67e22';
+borderLeft = '#e67e22', '3px'; // Orange
+}
+if (feature === 'user') {
+color = '#f39c12';
+borderLeft = '#f39c12', '3px'; // Orange
+}
+
+// Use %c for styling in the console
+console.log(`%c${indent}${message}`, `color: ${color}; font-weight: bold; border-left: 3px solid ${borderLeft}; padding-left: 5px;`);
+}
+
+    // ====================================================================================================
+    // IN-APP NOTIFICATION SYSTEM
+    // ====================================================================================================
+   
+    class NotificationSystem {
+        constructor() {
+            this.container = document.getElementById('notification-container');
+            this.notifications = [];
+            this.maxNotifications = 5;
+        }
+
+        show(message, type = 'info', title = null, duration = 4000) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+           
+            notification.innerHTML = `
+                <div class="notification-icon"></div>
+                <div class="notification-content">
+                    ${title ? `<div class="notification-title">${title}</div>` : ''}
+                    <div class="notification-message">${message}</div>
+                </div>
+                <button class="notification-close">×</button>
+            `;
+           
+            // Add to container
+            this.container.appendChild(notification);
+           
+            // Limit number of notifications
+            if (this.notifications.length >= this.maxNotifications) {
+                const oldest = this.notifications.shift();
+                this.remove(oldest);
+            }
+           
+            this.notifications.push(notification);
+           
+            // Show notification with animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 10);
+           
+            // Auto-dismiss
+            if (duration > 0) {
+                setTimeout(() => {
+                    this.remove(notification);
+                }, duration);
+            }
+           
+            // Close button
+            const closeBtn = notification.querySelector('.notification-close');
+            closeBtn.addEventListener('click', () => {
+                this.remove(notification);
+            });
+           
+            // Click to dismiss
+            notification.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('notification-close')) {
+                    this.remove(notification);
+                }
+            });
+           
+            return notification;
+        }
+       
+        remove(notification) {
+            if (!notification || !notification.parentNode) return;
+           
+            notification.classList.add('hide');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+                const index = this.notifications.indexOf(notification);
+                if (index > -1) {
+                    this.notifications.splice(index, 1);
+                }
+            }, 300);
+        }
+       
+        // Convenience methods
+        success(message, title = null, duration = 4000) {
+            return this.show(message, 'success', title, duration);
+        }
+       
+        error(message, title = null, duration = 6000) {
+            return this.show(message, 'error', title, duration);
+        }
+       
+        warning(message, title = null, duration = 5000) {
+            return this.show(message, 'warning', title, duration);
+        }
+       
+        info(message, title = null, duration = 4000) {
+            return this.show(message, 'info', title, duration);
+        }
+       
+        // Clear all notifications
+        clear() {
+            this.notifications.forEach(notification => {
+                this.remove(notification);
+            });
+            this.notifications = [];
+        }
+    }
+   
+    // Create global notification instance
+    const notifications = new NotificationSystem();
+
+    // ====================================================================================================
+    // UTILITY FUNCTIONS
+    // ====================================================================================================
+   
+    // Helper function to set a button's loading state
+    function setButtonLoading(buttonElement, isLoading) {
+        if (!buttonElement) return;
+       
+        if (isLoading) {
+            buttonElement.dataset.originalText = buttonElement.textContent;
+            buttonElement.disabled = true;
+            buttonElement.classList.add('button-loading');
+            buttonElement.innerHTML = '<span class="spinner"></span>';
+        } else {
+            buttonElement.disabled = false;
+            buttonElement.classList.remove('button-loading');
+            buttonElement.textContent = buttonElement.dataset.originalText;
+        }
+    }
+
+    // Initialize collapsed sections from localStorage
+    function initCollapsedSections() {
+        const saved = localStorage.getItem('collapsedSections');
+        if (saved) {
+            collapsedSections = JSON.parse(saved);
+        } else {
+            if (window.innerWidth <= 480) {
+                collapsedSections = {
+                    'recent-chats-section': false,
+                    'rooms-section': true,
+                    'admin-section': true
+                };
+            } else {
+                collapsedSections = {
+                    'recent-chats-section': false,
+                    'rooms-section': true,
+                    'admin-section': true
+                };
+            }
+        }
+    }
+
+    function applyCollapsedStates() {
+        Object.keys(collapsedSections).forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            const content = document.getElementById(sectionId.replace('-section', '-content'));
+            const toggle = section ? section.querySelector('.collapse-toggle') : null;
+       
+            if (section && content && toggle) {
+                if (collapsedSections[sectionId]) {
+                    content.classList.add('collapsed');
+                    toggle.classList.add('collapsed');
+                    toggle.textContent = '▶';
+                } else {
+                    content.classList.remove('collapsed');
+                    toggle.classList.remove('collapsed');
+                    toggle.textContent = '▼';
+                }
+            }
+        });
+    }
+
+    // Toggle section collapse
+    function toggleSection(sectionId) {
+        collapsedSections[sectionId] = !collapsedSections[sectionId];
+        localStorage.setItem('collapsedSections', JSON.stringify(collapsedSections));
+        applyCollapsedStates();
+    }
+
+    // ====================================================================================================
+    // AUTHENTICATION FUNCTIONS
+    // ====================================================================================================
+   
+    // Auth tab switching
+    function switchAuthTab(tab) {
+        if (!guestTab || !accountTab || !guestPanel || !accountPanel ||
+            !signupPanel || !usernamePanel) {
+            console.error("🗂️ ❌ Missing auth tab elements");
+            return;
+        }
+       
+        if (tab === 'guest') {
+            guestTab.classList.add('active');
+            accountTab.classList.remove('active');
+            guestPanel.classList.add('active');
+            accountPanel.classList.remove('active');
+            signupPanel.classList.remove('active');
+            usernamePanel.classList.remove('active');
+        } else {
+            accountTab.classList.add('active');
+            guestTab.classList.remove('active');
+            accountPanel.classList.add('active');
+            guestPanel.classList.remove('active');
+            signupPanel.classList.remove('active');
+            usernamePanel.classList.remove('active');
+        }
+    }
+
+    function switchAuthPanel(panel) {
+        if (!guestPanel || !accountPanel || !signupPanel || !usernamePanel) {
+            console.error("🗂 ❌ Missing auth panel elements");
+            return;
+        }
+       
+        // Hide all panels first
+        guestPanel.classList.remove('active');
+        accountPanel.classList.remove('active');
+        signupPanel.classList.remove('active');
+        usernamePanel.classList.remove('active');
+       
+        // Show the requested panel
+        if (panel === 'signup') {
+            signupPanel.classList.add('active');
+        } else if (panel === 'login') {
+            accountPanel.classList.add('active');
+        } else if (panel === 'username') {
+            usernamePanel.classList.add('active');
+        }
+    }
+
+    // Login as guest
+    function loginAsGuest() {
+        const username = guestUsername.value.trim();
+        if (!username) {
+            notifications.error('u gotta enter a username , bro.', 'action required', '6000');
+            return;
+        }
+       
+        setButtonLoading(guestLoginBtn, true);
+       
+        const username_lower = username.toLowerCase();
+        database.ref('users').orderByChild('displayName_lower').equalTo(username_lower).once('value')
+            .then(snapshot => {
+                if (snapshot.exists()) {
+                    notifications.error(`"${username}" is taken, bro. choose another.`, 'error', '6000');
+                    setButtonLoading(guestLoginBtn, false);
+                    return Promise.reject(new Error('Username taken'));
+                }
+               
+                return auth.signInAnonymously();
+            })
+            .then(userCredential => {
+                currentUser = userCredential.user;
+                console.log("👤🤨 ✅ Guest signed in successfully");
+               
+                return database.ref('users/' + currentUser.uid).set({
+                    displayName: username,
+                    displayName_lower: username.toLowerCase(),
+                    isGuest: true,
+                    lastSeen: firebase.database.ServerValue.TIMESTAMP,
+                    uid: currentUser.uid
+                });
+            })
+            .then(() => {
+                return currentUser.updateProfile({ displayName: username });
+            })
+            .then(() => {
+                setupUser();
+            })
+            .catch(error => {
+                console.error("couldn't sign u in as guest bro. error:", error);
+                if (error.message !== 'Username taken') {
+                    notifications.error(error.message);
+                }
+            })
+            .finally(() => {
+                setButtonLoading(guestLoginBtn, false);
+            });
+    }
+
+    // Login with email
+    function loginWithEmail() {
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+       
+        if (email && password) {
+            setButtonLoading(loginBtn, true);
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    currentUser = userCredential.user;
+                    return currentUser.reload();
+                })
+                .then(() => {
+                    console.log("Email user signed in:", currentUser);
+                   
+                    if (!currentUser.displayName || currentUser.displayName === '') {
+                        switchAuthPanel('username');
+                    } else {
+                        setupUser();
+                    }
+                   
+                    updateVerificationUI();
+                })
+                .catch(error => {
+                    console.error("📧➡️ ❌ Error signing in:", error);
+                   
+                    let specificMessage = "";
+                    if (error.code === 'auth/user-not-found') {
+                        specificMessage = "ur account wasn't found.";
+                    } else if (error.code === 'auth/invalid-login-credentials') {
+                        specificMessage = "that might be the wrong email/password combination.";
+                    } else if (error.code === 'auth/wrong-password') {
+                        specificMessage = "that's the wrong password.";
+                    } else if (error.code === 'auth/invalid-email') {
+                        specificMessage = "that email isn't in the correct format.";
+                    } else if (error.code === 'auth/user-disabled') {
+                        specificMessage = "ur account's been disabled by a leader.";
+                    } else if (error.code === 'auth/too-many-requests') {
+                        specificMessage = "u tried logging in too many times. try again later.";
+                    }
+
+                    if (specificMessage) {
+                        notifications.error("couldn't sign u in, mate." + " " + specificMessage);
+                    } else {
+                        notifications.error("couldn't sign u in, mate." + " " + error.message);
+                    }
+                })
+                .finally(() => {
+                    setButtonLoading(loginBtn, false);
+                });
+        } else {
+            notifications.warning('u gotta enter an email and password, mate.');
+        }
+    }
+   
+    // Send verification email
+    function sendEmailVerification() {
+        if (!currentUser) {
+            notifications.error('u gotta log in first, mate.');
+            return;
+        }
+       
+        if (currentUser.emailVerified) {
+            notifications.error('ur email is already verified, bro.');
+            return;
+        }
+       
+        const verifyButton = document.getElementById('verify-email-btn');
+        if (verifyButton) {
+            verifyButton.disabled = true;
+            verifyButton.textContent = 'sending...';
+        }
+       
+        currentUser.sendEmailVerification()
+            .then(() => {
+                const tooltipStatus = document.getElementById('tooltip-status');
+                if (tooltipStatus) {
+                    tooltipStatus.textContent = 'email sent! check your inbox and spam folders.';
+                    tooltipStatus.style.color = '#4caf50';
+                   
+                    setTimeout(() => {
+                        tooltipStatus.textContent = 'email not verified';
+                        tooltipStatus.style.color = '#f44336';
+                    }, 5000);
+                }
+            })
+            .catch(error => {
+                console.error("📩✔️ ❌ Error sending verification email:", error);
+               
+                const tooltipStatus = document.getElementById('tooltip-status');
+                if (tooltipStatus) {
+                    tooltipStatus.textContent = `error: ${error.message}`;
+                    tooltipStatus.style.color = '#f44336';
+                   
+                    setTimeout(() => {
+                        tooltipStatus.textContent = 'email not verified';
+                        tooltipStatus.style.color = '#f44336';
+                    }, 5000);
+                }
+            })
+            .finally(() => {
+                if (verifyButton) {
+                    verifyButton.disabled = false;
+                    verifyButton.textContent = 'verify email';
+                }
+            });
+    }
+
+    // Update UI based on verification status
+    function updateVerificationUI() {
+        const container = document.getElementById('email-verification-icon');
+        const icon = document.getElementById('verification-icon');
+        const tooltipStatus = document.getElementById('tooltip-status');
+        const tooltipEmail = document.getElementById('tooltip-email');
+        const verifyBtn = document.getElementById('verify-email-btn');
+       
+        if (!container || !icon || !tooltipStatus) return;
+       
+        if (currentUser && !currentUser.isAnonymous) {
+            container.style.display = 'block';
+           
+            if (currentUser.emailVerified) {
+                icon.className = 'verification-icon verified';
+                icon.textContent = '✓';
+                tooltipStatus.textContent = 'email verified';
+                tooltipStatus.style.color = '#4caf50';
+                if (verifyBtn) verifyBtn.style.display = 'none';
+            } else {
+                icon.className = 'verification-icon not-verified';
+                icon.textContent = '✕';
+                tooltipStatus.textContent = 'email not verified';
+                tooltipStatus.style.color = '#f44336';
+                if (verifyBtn) verifyBtn.style.display = 'block';
+            }
+           
+            if (currentUser.email && tooltipEmail) {
+                tooltipEmail.textContent = currentUser.email;
+            }
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
+    // Set username for new users
+    function setUsername() {
+        const username = chooseUsername.value.trim();
+       
+        if (username && currentUser) {
+            setButtonLoading(setUsernameBtn, true);
+
+            currentUser.updateProfile({ displayName: username })
+                .then(() => {
+                    return database.ref('users/' + currentUser.uid).update({
+                        displayName: username,
+                        displayName_lower: username.toLowerCase(),
+                        uid: currentUser.uid
+                    });
+                })
+                .then(() => {
+                    setupUser();
+                })
+                .catch(error => {
+                    console.error("👤📛 ❌ Set username failed. Error:", error);
+                    notifications.error("couldn't set that username for u, bro. check the console for details.", "that didn't work", '6000');
+                })
+                .finally(() => {
+                    setButtonLoading(setUsernameBtn, false);
+                });
+        } else {
+            notifications.warning('u gotta enter a username, mate.');
+        }
+    }
+
+    // Sign up new user
+    function signUp() {
+        const email = signupEmail.value.trim();
+        const password = signupPassword.value;
+        const name = displayName.value.trim();
+       
+        if (!email || !password || !name) {
+            notifications.error('Please fill all fields', 'Validation Error', 3000);
+            return;
+        }
+       
+        if (password.length < 6) {
+            notifications.error('Password must be at least 6 characters', 'Validation Error', 3000);
+            return;
+        }
+       
+        if (email && password && name) {
+            setButtonLoading(signupBtn, true);
+
+            auth.createUserWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    return userCredential.user.updateProfile({ displayName: name });
+                })
+                .then(() => {
+                    currentUser = auth.currentUser;
+                    return currentUser.sendEmailVerification();
+                })
+                .then(() => {
+                    return database.ref('users/' + currentUser.uid).set({
+                        displayName: currentUser.displayName || 'New User',
+                        displayName_lower: (currentUser.displayName || 'New User').toLowerCase(),
+                        isGuest: false,
+                        emailVerified: false,
+                        email: email,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP,
+                        lastSeen: firebase.database.ServerValue.TIMESTAMP,
+                        uid: currentUser.uid
+                    });
+                })
+                .then(() => {
+                    notifications.success('thanks for joining echo, bro! make sure u verify ur email to make calls. u might have to check ur spam folder too.', 'thanks!', '10000');
+                    setupUser();
+                })
+                .catch(error => {
+                    console.error("couldn't sign u up, mate. error:", error);
+                    notifications.error(error.message);
+                })
+                .finally(() => {
+                    setButtonLoading(signupBtn, false);
+                });
+        } else {
+            notifications.warning('u gotta fill all fields, mate.');
+        }
+    }
+
+    // Reset password
+    function resetPassword() {
+        const email = emailInput.value.trim();
+       
+        if (!email) {
+            notifications.warning('u gotta enter your email address first, bro.');
+            return;
+        }
+
+        const originalText = resetPasswordBtn.textContent;
+        resetPasswordBtn.textContent = 'sending...';
+        resetPasswordBtn.disabled = true;
+
+        auth.sendPasswordResetEmail(email)
+            .then(() => {
+                notifications.success('password reset email sent, bro! check your email. try looking in your spam folder too.', 'done', '10000');
+            })
+            .catch(error => {
+                console.error(" error:", error);
+                notifications.error("couldn't send that password reset email, bro. check the console for details.", "that didn't work", '6000');
+            })
+            .finally(() => {
+                resetPasswordBtn.textContent = originalText;
+                resetPasswordBtn.disabled = false;
+            });
+    }
+
+    function logout() {
+        log("...⬅️🚗🚪 ℹ️ Logging out..", 0, 'auth');
+       
+        if (currentUser) {
+            auth.signOut().then(() => {
+                log("✔️ Firebase sign-out successful.", 1, 'auth');
+            }).catch(error => {
+                console.error("⬅️🚗..🚪 ❌ Firebase sign-out failed:", error);
+            });
+        }
+        currentUser = null;
+       
+        if (currentCall) {
+            endCall();
+        }
+       
+        document.body.classList.remove('is-logged-in');
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.classList.remove('user-logged-in');
+        }
+       
+        if (authContainer) {
+            authContainer.style.display = 'flex';
+            authContainer.style.position = 'relative';
+            authContainer.style.zIndex = '1000';
+            authContainer.style.backgroundColor = '';
+        }
+       
+        if (appMain) {
+            appMain.style.display = 'none';
+            appMain.classList.remove('visible');
+        }
+       
+        void document.body.offsetHeight;
+       
+        setTimeout(() => {
+            switchAuthTab('account');
+            switchAuthPanel('login');
+           
+            if (authContainer) {
+                authContainer.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }
+        }, 50);
+       
+        log("🚗⬅️...🚪✅ Logout successful!", 0, 'auth');
+    }
+
+    // ====================================================================================================
+    // USER SETUP AND DATA LOADING FUNCTIONS
+    // ====================================================================================================
+   
+    // Setup user after authentication
+    async function setupUser() {
+        try {
+            log("👤⚙️ ℹ️ Setting up user..", 0, 'user');
+           
+            document.body.classList.add('is-logged-in');
+            document.querySelector('.app-container').classList.add('user-logged-in');
+
+            const displayName = currentUser.displayName || 'User';
+            userName.textContent = displayName;
+            const avatarText = displayName && displayName.length > 0 ? displayName.charAt(0).toUpperCase() : 'U';
+            userAvatar.textContent = avatarText;
+
+            if (authContainer) {
+                authContainer.style.display = 'none';
+            }
+            if (appMain) {
+                appMain.style.display = 'flex';
+            }
+           
+            log("✔️ UI/states set", 1, 'user');
+
+            const userRef = database.ref('users/' + currentUser.uid);
+           
+            await userRef.update({
+                displayName: displayName,
+                displayName_lower: displayName.toLowerCase(),
+                isGuest: currentUser.isAnonymous || false,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
+            });
+           
+            userRef.onDisconnect().update({
+                isOnline: false,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
+            });
+           
+            log("✔️ Database and listeners loaded", 1, 'user');
+
+            await loadUsers();
+            loadContacts();
+           
+            setupMedia();
+            listenForIncomingCalls();
+           
+            updateVerificationUI();
+           
+            const appMainElement = document.getElementById('app-main');
+            if (appMainElement) {
+                appMainElement.classList.add('visible');
+            }
+
+        } catch (error) {
+            console.error("❌ CRITICAL ERROR in setupUser:", error);
+            notifications.error("a critical error occurred during login, bro. check the console for details.", 'CRITICAL ERROR', 10000);
+           
+            const appMainElement = document.getElementById('app-main');
+            if (appMainElement) appMainElement.classList.add('visible');
+        }
+       
+        log("👤⚙️ User has been set up!", 0, 'user');
+    }
+
+    // Load users
+    function loadUsers() {
+        console.log("👥📋 Loading users - Creating a new, clean slate.");
+        return new Promise((resolve, reject) => {
+            const usersRef = database.ref('users');
+           
+            usersRef.once('value').then(snapshot => {
+                console.log("👥📋 Received snapshot from Firebase.");
+               
+                allUsers = {};
+                snapshot.forEach(childSnapshot => {
+                    const user = childSnapshot.val();
+                    const userId = childSnapshot.key;
+                    allUsers[userId] = user;
+                });
+               
+                console.log("👥📋 All users loaded. allUsers object now contains:", allUsers);
+                resolve();
+            }).catch(error => {
+                console.error("👥📋 Failed to load users:", error);
+                resolve();
+            });
+        });
+    }
+   
+    // Load contacts from Firebase
+    function loadContacts() {
+        contactsList.innerHTML = '';
+       
+        Object.keys(allUsers).forEach(userId => {
+            if (userId === currentUser.uid) return;
+           
+            const user = allUsers[userId];
+            if (!user) return;
+           
+            const contactItem = document.createElement('div');
+            contactItem.classList.add('recent-chat-item');
+           
+            const now = Date.now();
+            const twoMinutesAgo = now - (2 * 60 * 1000);
+            const isOnline = user.lastSeen && user.lastSeen > twoMinutesAgo;
+           
+            if (isOnline) {
+                contactItem.classList.add('online');
+            } else {
+                contactItem.classList.add('offline');
+            }
+           
+            const contactAvatar = document.createElement('div');
+            contactAvatar.classList.add('contact-avatar');
+            const avatarText = user.displayName ?
+                user.displayName.charAt(0).toUpperCase() : 'U';
+            contactAvatar.textContent = avatarText;
+           
+            const contactName = document.createElement('div');
+            contactName.classList.add('chat-name');
+            contactName.textContent = user.displayName || 'Unknown User';
+           
+            contactItem.appendChild(contactAvatar);
+            contactItem.appendChild(contactName);
+           
+            contactItem.addEventListener('click', () => {
+                startCall(userId, user.displayName || 'Unknown User');
+            });
+           
+            contactsList.appendChild(contactItem);
+        });
+    }
+
+    // ====================================================================================================
+    // CALLING FUNCTIONS
+    // ====================================================================================================
+
+    // DOM elements for call modal
+    const incomingCallModal = document.getElementById('incoming-call-modal');
+    const callerAvatar = document.getElementById('caller-avatar');
+    const callerName = document.getElementById('caller-name');
+    const acceptCallBtn = document.getElementById('accept-call-btn');
+    const rejectCallBtn = document.getElementById('reject-call-btn');
+
+    // State variables for calls
+    let incomingCallData = null;
+    let callTimeout = null;
+
+    // Setup media (camera and microphone)
+    async function setupMedia() {
+        try {
+            const constraints = {
+                video: {
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 }
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            };
+           
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            localVideo.srcObject = localStream;
+           
+            console.log("Local media setup successful:", {
+                audioTracks: localStream.getAudioTracks().length,
+                videoTracks: localStream.getVideoTracks().length
+            });
+        } catch (error) {
+            console.error("Error accessing media devices:", error);
+            notifications.error("Could not access camera/microphone. Please check permissions.", "Media Error");
+        }
+    }
+
+    // Start a call (as the initiator)
+    function startCall(userId, displayName) {
+        if (currentCall) {
+            notifications.warning("You're already in a call. End current call first.", "Call Active");
+            return;
+        }
+       
+        callStatus.textContent = `Calling ${displayName}...`;
+        remoteVideoLabel.textContent = displayName;
+       
+        const callId = generateCallId();
+       
+        // Initialize SimplePeer as the initiator
+        peerConnection = new SimplePeer({
+            initiator: true,
+            trickle: false, // We'll handle signaling ourselves via Firebase
+            stream: localStream,
+            config: configuration
+        });
+       
+        // 1. When SimplePeer generates a signal (the offer), send it to Firebase
+        peerConnection.on('signal', data => {
+            console.log("CALLER: Sending offer signal:", data);
+            database.ref(`calls/${callId}`).set({
+                offer: data, // Store the offer under the 'offer' key
+                from: currentUser.uid,
+                to: userId,
+                fromName: currentUser.displayName || 'Unknown User',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+        });
+       
+        // 2. When we receive the remote stream, play it
+        peerConnection.on('stream', stream => {
+            console.log("CALLER: Remote stream received");
+            remoteStream = stream;
+            remoteVideo.srcObject = stream;
+            remoteVideo.play().catch(e => console.error("Error playing remote video:", e));
+           
+            callStatus.textContent = `Connected with ${displayName}`;
+            notifications.success(`Connected with ${displayName}`, "Call Connected");
+            currentCall = { userId, displayName, callId };
+        });
+       
+        // 3. Handle connection state changes
+        peerConnection.on('connect', () => {
+            console.log("CALLER: Peer connection established");
+        });
+       
+        peerConnection.on('close', () => {
+            console.log("CALLER: Peer connection closed");
+            endCall();
+        });
+       
+        peerConnection.on('error', err => {
+            console.error("CALLER: Peer connection error:", err);
+            notifications.error("Connection error: " + err.message, "Connection Error");
+            endCall();
+        });
+       
+        // 4. Listen for the answer from the receiver at the 'answer' location
+        database.ref(`calls/${callId}/answer`).on('value', snapshot => {
+            if (snapshot.exists()) {
+                const answerData = snapshot.val();
+                console.log("CALLER: Answer received:", answerData);
+               
+                // Stop listening for answers after we get one
+                database.ref(`calls/${callId}/answer`).off();
+               
+                try {
+                    peerConnection.signal(answerData);
+                } catch (error) {
+                    console.error("CALLER: Error processing answer:", error);
+                }
+            }
+        });
+       
+        // Set up timeout for unanswered call
+        callTimeout = setTimeout(() => {
+            if (!currentCall) {
+                notifications.warning(`${displayName} didn't answer`, "Call Unanswered");
+                endCall();
+            }
+        }, 30000);
+    }
+
+    // This function now ONLY shows the incoming call UI. The actual work is in acceptCall.
+    function answerCall(callData) {
+        if (currentCall) {
+            // Already in a call, reject this one by removing it from Firebase
+            database.ref(`calls/${callData.callId}`).remove();
+            return;
+        }
+       
+        if (!callData || !callData.offer) {
+            console.error("Invalid call data received:", callData);
+            notifications.error("Invalid call data received", "Call Error");
+            return;
+        }
+       
+        incomingCallData = callData;
+       
+        // Show incoming call modal
+        callerName.textContent = callData.fromName || 'Unknown User';
+        const avatarText = callData.fromName ?
+            callData.fromName.charAt(0).toUpperCase() : 'U';
+        callerAvatar.textContent = avatarText;
+        incomingCallModal.classList.add('show');
+       
+        // Auto-reject after 30 seconds if not answered
+        callTimeout = setTimeout(() => {
+            if (incomingCallData) {
+                rejectCall();
+            }
+        }, 30000);
+    }
+
+    // Accept an incoming call (as the receiver)
+    function acceptCall() {
+        const callData = incomingCallData;
+        if (!callData) return;
+       
+        // Clear the auto-reject timeout
+        if (callTimeout) {
+            clearTimeout(callTimeout);
+            callTimeout = null;
+        }
+       
+        // Hide the modal
+        incomingCallModal.classList.remove('show');
+        callStatus.textContent = `Connecting with ${callData.fromName}...`;
+        remoteVideoLabel.textContent = callData.fromName;
+       
+        // Initialize SimplePeer as the receiver (not the initiator)
+        peerConnection = new SimplePeer({
+            initiator: false,
+            trickle: false,
+            stream: localStream,
+            config: configuration
+        });
+       
+        // 1. When SimplePeer generates a signal (the answer), send it to Firebase
+        peerConnection.on('signal', data => {
+            console.log("RECEIVER: Sending answer signal:", data);
+            database.ref(`calls/${callData.callId}/answer`).set(data);
+        });
+       
+        // 2. When we receive the remote stream, play it
+        peerConnection.on('stream', stream => {
+            console.log("RECEIVER: Remote stream received");
+            remoteStream = stream;
+            remoteVideo.srcObject = stream;
+            remoteVideo.play().catch(e => console.error("Error playing remote video:", e));
+           
+            callStatus.textContent = `connected: ${callData.fromName}`;
+            notifications.success(`connected: ${callData.fromName}`);
+            currentCall = {
+                userId: callData.from,
+                displayName: callData.fromName,
+                callId: callData.callId
+            };
+        });
+       
+        // 3. Handle connection state changes
+        peerConnection.on('connect', () => {
+            console.log("RECEIVER: Peer connection established");
+        });
+       
+        peerConnection.on('close', () => {
+            console.log("RECEIVER: Peer connection closed");
+            endCall();
+        });
+       
+        peerConnection.on('error', err => {
+            console.error("RECEIVER: Peer connection error:", err);
+            notifications.error("connection error: " + err.message);
+            endCall();
+        });
+       
+        // 4. Process the offer from the caller
+        try {
+            console.log("RECEIVER: Processing offer:", callData.offer);
+            peerConnection.signal(callData.offer);
+        } catch (error) {
+            console.error("RECEIVER: Error processing offer:", error);
+            endCall();
+        }
+    }
+
+    // Reject an incoming call
+    function rejectCall() {
+        if (!incomingCallData) return;
+       
+        if (callTimeout) {
+            clearTimeout(callTimeout);
+            callTimeout = null;
+        }
+       
+        incomingCallModal.classList.remove('show');
+       
+        // Remove the entire call entry from Firebase to signal rejection
+        database.ref(`calls/${incomingCallData.callId}`).remove();
+       
+        incomingCallData = null;
+    }
+
+    // End current call
+    function endCall() {
+        // Clear any pending timeout
+        if (callTimeout) {
+            clearTimeout(callTimeout);
+            callTimeout = null;
+        }
+       
+        // Stop screen sharing if active
+        if (isScreenSharing) {
+            stopScreenShare();
+        }
+       
+        const callId = currentCall ? currentCall.callId : null;
+       
+        if (currentCall) {
+            console.log("Ending call with ID:", currentCall.callId);
+           
+            // Clean up peer connection using SimplePeer's destroy method
+            if (peerConnection) {
+                peerConnection.destroy();
+                peerConnection = null;
+            }
+           
+            // Clean up remote stream
+            if (remoteStream) {
+                remoteStream.getTracks().forEach(track => track.stop());
+                remoteStream = null;
+            }
+           
+            // Clear remote video
+            if (remoteVideo) {
+                remoteVideo.pause();
+                remoteVideo.srcObject = null;
+            }
+           
+            remoteVideoLabel.textContent = "waiting for connection...";
+           
+            // Remove call data from Firebase
+            database.ref(`calls/${currentCall.callId}`).remove();
+           
+            // Reset state
+            currentCall = null;
+            callStatus.textContent = "Ready to make calls";
+            notifications.info("call ended.");
+        }
+       
+        // Clear any incoming call
+        if (incomingCallData) {
+            incomingCallData = null;
+            incomingCallModal.classList.remove('show');
+        }
+       
+        // If we had a call ID but no currentCall (e.g., call was rejected), clean it up
+        if (callId && !currentCall) {
+            database.ref(`calls/${callId}`).remove();
+        }
+    }
+
+    // Toggle mute
+    function toggleMute() {
+        if (!localStream) return;
+       
+        isMuted = !isMuted;
+        const audioTracks = localStream.getAudioTracks();
+       
+        audioTracks.forEach(track => {
+            track.enabled = !isMuted;
+        });
+       
+        muteBtn.textContent = isMuted ? '🔇' : '🎤';
+        muteBtn.classList.toggle('muted', isMuted);
+        notifications.info(isMuted ? "Microphone muted" : "Microphone unmuted");
+    }
+
+    // Toggle video
+    function toggleVideo() {
+        if (!localStream) return;
+       
+        isVideoOff = !isVideoOff;
+        const videoTracks = localStream.getVideoTracks();
+       
+        videoTracks.forEach(track => {
+            track.enabled = !isVideoOff;
+        });
+       
+        videoBtn.textContent = isVideoOff ? '📹' : '📹'; // You might want different icons here
+        videoBtn.classList.toggle('muted', isVideoOff);
+        notifications.info(isVideoOff ? "Camera turned off" : "Camera turned on");
+    }
+
+    // Toggle screen sharing
+    async function toggleScreenShare() {
+        if (!currentCall) {
+            notifications.warning("You need to be in a call to share your screen", "Screen Share");
+            return;
+        }
+
+        if (!isScreenSharing) {
+            try {
+                // Start screen sharing
+                screenShareStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: true // Include audio if user wants to share audio
+                });
+
+                // Get the video track from the screen share stream
+                const screenTrack = screenShareStream.getVideoTracks()[0];
+                
+                // Store the original video track
+                if (localStream) {
+                    originalVideoTrack = localStream.getVideoTracks()[0];
+                }
+
+                // Replace the video track in the local stream
+                if (localStream) {
+                    localStream.removeTrack(originalVideoTrack);
+                    localStream.addTrack(screenTrack);
+                }
+
+                // Replace the video track in the peer connection
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => 
+                        s.track && s.track.kind === 'video'
+                    );
+                    
+                    if (sender) {
+                        await sender.replaceTrack(screenTrack);
+                    }
+                }
+
+                // Update local video
+                localVideo.srcObject = localStream;
+
+                // Update button state
+                isScreenSharing = true;
+                screenShareBtn.classList.add('active');
+                screenShareBtn.textContent = '🖥️';
+                notifications.info("Screen sharing started", "Screen Share");
+
+                // Listen for screen share ending
+                screenTrack.addEventListener('ended', () => {
+                    stopScreenShare();
+                });
+
+            } catch (error) {
+                console.error("Error starting screen share:", error);
+                notifications.error("Failed to start screen sharing: " + error.message, "Screen Share Error");
+            }
+        } else {
+            // Stop screen sharing
+            stopScreenShare();
+        }
+    }
+
+    // Stop screen sharing
+    function stopScreenShare() {
+        if (!isScreenSharing) return;
+
+        // Stop all tracks in the screen share stream
+        if (screenShareStream) {
+            screenShareStream.getTracks().forEach(track => track.stop());
+            screenShareStream = null;
+        }
+
+        // Restore the original video track
+        if (localStream && originalVideoTrack) {
+            localStream.removeTrack(localStream.getVideoTracks()[0]);
+            localStream.addTrack(originalVideoTrack);
+
+            // Update the peer connection
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => 
+                    s.track && s.track.kind === 'video'
+                );
+                
+                if (sender) {
+                    sender.replaceTrack(originalVideoTrack);
+                }
+            }
+
+            // Update local video
+            localVideo.srcObject = localStream;
+        }
+
+        // Update button state
+        isScreenSharing = false;
+        screenShareBtn.classList.remove('active');
+        screenShareBtn.textContent = '🖥️';
+        notifications.info("Screen sharing stopped", "Screen Share");
+    }
+
+    // Generate a unique call ID
+    function generateCallId() {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+   
+    // Listen for incoming calls
+    function listenForIncomingCalls() {
+        database.ref('calls').on('child_added', snapshot => {
+            if (snapshot.exists()) {
+                const callId = snapshot.key;
+                const callData = snapshot.val();
+               
+                console.log("Incoming call detected:", callData);
+               
+                // Only handle incoming calls where current user is the recipient
+                if (callData.to === currentUser.uid && !currentCall && !incomingCallData) {
+                    // Add the callId to the data object for later use
+                    callData.callId = callId;
+                   
+                    // Validate the call data has an offer
+                    if (callData.offer && callData.from && callData.fromName) {
+                        answerCall(callData);
+                    } else {
+                        console.error("Invalid call data received (missing offer):", callData);
+                        // Clean up invalid call data
+                        database.ref(`calls/${callId}`).remove();
+                    }
+                }
+            }
+        });
+       
+        // Also listen for call removals (when a call ends or is rejected)
+        database.ref('calls').on('child_removed', snapshot => {
+            const callId = snapshot.key;
+           
+            // If this was our call and it's been removed, end our call
+            if (currentCall && currentCall.callId === callId) {
+                console.log("Call was removed from Firebase, ending call");
+                endCall();
+            }
+           
+            // If this was an incoming call and it's been removed, clear the UI
+            if (incomingCallData && incomingCallData.callId === callId) {
+                console.log("Incoming call was removed from Firebase");
+                incomingCallData = null;
+                incomingCallModal.classList.remove('show');
+            }
+        });
+    }
+
+    // ====================================================================================================
+    // EVENT LISTENERS
+    // ====================================================================================================
+   
+    // Auth tab switching
+    if (guestTab) guestTab.addEventListener('click', () => switchAuthTab('guest'));
+    if (accountTab) accountTab.addEventListener('click', () => switchAuthTab('account'));
+    if (showSignup) showSignup.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchAuthPanel('signup');
+    });
+    if (showLogin) showLogin.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchAuthPanel('login');
+    });
+    if (resetPasswordBtn) resetPasswordBtn.addEventListener('click', resetPassword);
+
+    // Auth functionality
+    if (guestLoginBtn) guestLoginBtn.addEventListener('click', loginAsGuest);
+    if (loginBtn) loginBtn.addEventListener('click', loginWithEmail);
+    if (signupBtn) signupBtn.addEventListener('click', signUp);
+    if (setUsernameBtn) setUsernameBtn.addEventListener('click', setUsername);
+    if (logoutBtn) logoutBtn.addEventListener('click', logout);
+   
+    // Email verification button
+    if (verifyEmailBtn) {
+        verifyEmailBtn.addEventListener('click', sendEmailVerification);
+    }
+   
+    // Allow Enter key to login from password field
+    if (passwordInput) passwordInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            if (loginBtn) loginBtn.click();
+        }
+    });
+
+    // Allow Enter key to sign up from password field
+    if (displayName) displayName.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            if (signupBtn) signupBtn.click();
+        }
+    });
+
+    // Allow Enter key to set username from username field
+    if (chooseUsername) chooseUsername.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            if (setUsernameBtn) setUsernameBtn.click();
+        }
+    });
+   
+    // Allow Enter key to join as guest from the username field
+    if (guestUsername) guestUsername.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            if (guestLoginBtn) guestLoginBtn.click();
+        }
+    });
+   
+    // Call controls
+    if (muteBtn) muteBtn.addEventListener('click', toggleMute);
+    if (videoBtn) videoBtn.addEventListener('click', toggleVideo);
+    if (endCallBtn) endCallBtn.addEventListener('click', endCall);
+
+// Call modal event listeners
+if (acceptCallBtn) acceptCallBtn.addEventListener('click', acceptCall);
+if (rejectCallBtn) rejectCallBtn.addEventListener('click', rejectCall);
+
+    // Get the screen share button
+    const screenShareBtn = document.getElementById('screen-share-btn');
+    if (screenShareBtn) {
+        screenShareBtn.addEventListener('click', toggleScreenShare);
+    }
+   
+    // Mobile menu toggle
+    if (mobileMenuToggle) {
+        mobileMenuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+        });
+    }
+
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+        if (window.innerWidth <= 480 &&
+            sidebar && !sidebar.contains(e.target) &&
+            mobileMenuToggle && !mobileMenuToggle.contains(e.target) &&
+            sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+        }
+    });
+
+    // Collapse toggle listeners
+    document.querySelectorAll('.collapse-toggle').forEach(toggle => {
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const sectionId = toggle.dataset.section;
+            toggleSection(sectionId);
+        });
+    });
+
+    // Section header click to toggle
+    document.querySelectorAll('.section-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            if (e.target.classList.contains('collapse-toggle')) {
+                return;
+            }
+            const section = header.closest('.collapsible-section');
+            if (section) {
+                toggleSection(section.id);
+            }
+        });
+    });
+   
+    // Listen for auth state changes
+    auth.onAuthStateChanged(user => {
+        console.log("🔐 Auth state changed!");
+        console.log("🔐 User object:", user);
+
+        if (user) {
+            currentUser = user;
+            setupUser();
+        } else {
+            currentUser = null;
+            authContainer.style.display = 'flex';
+            appMain.style.display = 'none';
+        }
+    });
+   
+    // Initialize collapsed sections
+    initCollapsedSections();
+    applyCollapsedStates();
+
+    // ====================================================================================================
+    // DEBUGGING
+    // ====================================================================================================
+
+// Debug remote media
+function debugRemoteMedia() {
+if (remoteVideo && remoteVideo.srcObject) {
+const stream = remoteVideo.srcObject;
+console.log("Remote video debug:", {
+hasStream: !!stream,
+streamActive: stream && stream.active,
+audioTracks: stream ? stream.getAudioTracks().length : 0,
+videoTracks: stream ? stream.getVideoTracks().length : 0,
+videoElementState: remoteVideo.readyState,
+videoElementPaused: remoteVideo.paused,
+currentTime: remoteVideo.currentTime
+});
+}
+}
+
+// Brother asked a very good question
+function monitorVideoElement() {
+if (!remoteVideo || !currentCall) return;
+
+console.log("Video element state:", {
+readyState: remoteVideo.readyState,
+networkState: remoteVideo.networkState,
+paused: remoteVideo.paused,
+ended: remoteVideo.ended,
+currentTime: remoteVideo.currentTime,
+duration: remoteVideo.duration,
+error: remoteVideo.error
+});
+
+// If the video element is in an error state, try to recover
+if (remoteVideo.error) {
+console.error("Video element error:", remoteVideo.error);
+console.log("Attempting to recover from video error");
+
+// Clear the error and reload
+remoteVideo.srcObject = remoteVideo.srcObject;
+remoteVideo.load();
+}
+}
+
+// Update the debug interval to use this new function
+setInterval(() => {
+if (currentCall) {
+debugRemoteMedia();
+monitorVideoElement();
+}
+}, 2000);
+
+// Call periodically to debug
+setInterval(() => {
+if (currentCall) {
+debugRemoteMedia();
+}
+}, 2000);
+});         here is the index.html: <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aa-echo</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- ====================================================== -->
+        <!-- AUTHENTICATION SECTION -->
+        <!-- ====================================================== -->
+        <section class="auth-container" id="auth-container">
+            <div class="auth-form">
+                <div class="app-logo">
+                    <h1>aa-echo.</h1>
+                    <p>private calling client.</p>
+                </div>
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="account-tab">Account Login</button>
+                    <button class="auth-tab" id="guest-tab">Chat as Guest</button>
+                </div>
+                
+                <!-- Guest Login Form -->
+                <div class="auth-panel" id="guest-panel">
+                    <div class="disabled-overlay">
+                        <h3>Guest Login Disabled</h3>
+                        <p>Please create an account to join calls.</p>
+                    </div>
+                    <h2>jump in.</h2>
+                    <div class="input-with-button">
+                        <input type="text" id="guest-username" placeholder="display name" maxlength="20">
+                        <button id="guest-login-btn">join</button>
+                    </div>
+                </div>
+                
+                <!-- Account Login Form -->
+                <div class="auth-panel active" id="account-panel">
+                    <h2>welcome back.</h2>
+                    <input type="email" id="email" placeholder="email">
+                    <div class="input-with-button">
+                        <input type="password" id="password" placeholder="password">
+                        <button id="login-btn">login</button>
+                    </div>
+                    <p class="auth-switch">don't have an account? <a href="#" id="show-signup">sign up.</a></p>
+                    <p class="auth-switch">forgot ur password? <a href="#" id="reset-password-btn">reset it.</a></p>
+                </div>
+                
+                <!-- Sign Up Form -->
+                <div class="auth-panel" id="signup-panel">
+                    <h2>welcome.</h2>
+                    <input type="email" id="signup-email" placeholder="Email">
+                    <div class="input-with-button">
+                        <input type="password" id="signup-password" placeholder="Password (must be 6+ characters)">
+                    </div>
+                    <div class="input-with-button">
+                        <input type="text" id="display-name" placeholder="Display Name">
+                        <button id="signup-btn">sign up</button>
+                    </div>
+                    <p class="auth-switch">already have an account? <a href="#" id="show-login">log in.</a></p>
+                </div>
+                
+                <!-- Set Username Form -->
+                <div class="auth-panel" id="username-panel">
+                    <h3>choose your username.</h3>
+                    <p>this is how others will see you in calls.</p>
+                    <input type="text" id="choose-username" placeholder="display name" maxlength="20">
+                    <button id="set-username-btn">continue</button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- ====================================================== -->
+        <!-- MAIN APP SECTION -->
+        <!-- ====================================================== -->
+        <section class="app-main" id="app-main" style="display: none;">
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" id="mobile-menu-toggle">☰</button>
+            
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar">
+                <!-- User Profile Section -->
+                <div class="user-profile">
+                    <div class="user-avatar" id="user-avatar"></div>
+                    <div class="user-info">
+                        <div class="user-name-container">
+                            <div class="user-name" id="user-name"></div>
+                            <!-- Email Verification Icon -->
+                            <div class="email-verification-icon" id="email-verification-icon" style="display: none;" title="Email verification status">
+                                <span class="verification-icon" id="verification-icon">✓</span>
+                                <div class="verification-tooltip" id="verification-tooltip">
+                                    <div class="tooltip-content">
+                                        <span id="tooltip-status">verified</span>
+                                        <div id="tooltip-email" class="tooltip-email"></div>
+                                        <button id="verify-email-btn" class="tooltip-btn" style="display: none;">verify email</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="auth-actions">
+                            <button id="logout-btn" class="logout-btn">get out</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Public Rooms Section (Hidden for Echo but keeping structure) -->
+                <div class="rooms-section collapsible-section" id="rooms-section" style="display: none;">
+                    <div class="section-header">
+                        <h3>public chats</h3>
+                        <div class="section-controls">
+                            <div id="add-room-container" style="display: none;">
+                                <button id="open-new-room-modal-btn" class="refresh-btn">+</button>
+                            </div>
+                            <button class="collapse-toggle" data-section="rooms-section">▼</button>
+                        </div>
+                    </div>
+                    <div class="section-content" id="rooms-content">
+                        <div class="room-list" id="room-list">
+                            <div class="room-item active" data-room="general">General</div>
+                            <div class="room-item" data-room="random">Random</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Private Chats Section -->
+                <div class="recent-chats-section collapsible-section" id="recent-chats-section">
+                    <div class="section-header">
+                        <h3>humans</h3>
+                        <div class="section-controls">
+                            <button class="collapse-toggle" data-section="recent-chats-section">▼</button>
+                        </div>
+                    </div>
+                    <div class="section-content" id="recent-chats-content">
+                        <div class="recent-chats-list" id="contacts-list"></div>
+                    </div>
+                </div>
+
+                <!-- Admin Controls Section (Hidden for Echo but keeping structure) -->
+                <div class="admin-section collapsible-section" id="admin-section" style="display: none;">
+                    <div class="section-header">
+                        <h3>admin controls</h3>
+                        <button class="collapse-toggle" data-section="admin-section">▼</button>
+                    </div>
+                    <div class="section-content" id="admin-content">
+                        <div class="admin-controls">
+                            <!-- Admin controls content here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sidebar Footer -->
+                <div class="sidebar-footer">
+                    <p>made by <a href="https://sites.google.com/view/aa-infinitech/" target="_blank">aa</a> and adyan using ai</p>
+                    <a href="https://aa-echo.netlify.app/help" target="_blank">need help?</a>
+                </div>
+            </aside>
+            
+            <!-- Call Area -->
+            <main class="chat-area">
+                <!-- Chat Header -->
+                <div class="chat-header">
+                    <div class="header-left">
+                        <h2 id="current-call-name">ready to call.</h2>
+                        <div class="typing-indicator" id="typing-indicator"></div>
+                    </div>
+                    <span class="app-branding">aa-echo.</span>
+                </div>
+                
+                <!-- Call Container -->
+                <div class="messages" id="call-container">
+                    <div class="call-container">
+                        <!-- Local Video -->
+                        <div class="video-container local-video">
+                            <video id="local-video" autoplay muted></video>
+                            <div class="video-label">you</div>
+                        </div>
+                        
+                        <!-- Remote Video -->
+                        <div class="video-container remote-video">
+                            <video id="remote-video" autoplay></video>
+                            <div class="video-label" id="remote-video-label">waiting for connection...</div>
+                        </div>
+                        
+                        <!-- Call Controls -->
+                        <div class="call-controls">
+                            <button id="mute-btn" class="control-btn">🎙</button>
+                            <button id="video-btn" class="control-btn">📷</button>
+                            <button id="screen-share-btn" class="control-btn">🖥️</button>
+                            <button id="end-call-btn" class="control-btn end-call">✖️</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </section>
+    </div>
+    
+    <!-- Incoming Call Modal -->
+    <div id="incoming-call-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Incoming Call</h3>
+            </div>
+            <div class="modal-body">
+                <div class="caller-info">
+                    <div class="caller-avatar" id="caller-avatar"></div>
+                    <div class="caller-name" id="caller-name">Unknown User</div>
+                </div>
+                <div class="call-actions">
+                    <button id="accept-call-btn" class="call-btn accept">Accept</button>
+                    <button id="reject-call-btn" class="call-btn reject">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    
+    <!-- Your app script -->
+    <script src="app.js?v=2"></script>
+    
+    <!-- SimplePeer RTL Stuff idk man ask chatgpt -->
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    
+    <!-- Custom Notification Container -->
+    <div id="notification-container" class="notification-container"></div>
+</body>
+</html>   here is the manifest.json:{
+    "name": "aa-echo",
+    "short_name": "echo",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#294752",
+    "description": "Private calling client"
+}   here is the style.css:/* ==================== CSS CUSTOM PROPERTIES (VARIABLES) ==================== */
+:root {
+    --primary-color: #03DAC6;
+    --primary-hover: #00B5A4;
+    --background-primary: #121212;
+    --background-secondary: #1e1e1e;
+    --background-tertiary: #2a2a2a;
+    --surface-color: #2e2e2e;
+    --text-primary: #e0e0e0;
+    --text-secondary: #9e9e9e;
+    --text-disabled: #555;
+    --border-color: #333;
+    --error-color: #cf6679;
+    --success-color: #4caf50;
+    --warning-color: #ff9800;
+    --leader-color: #ffd700;
+    --scrollbar-thumb: #555;
+    --scrollbar-thumb-hover: #777;
+    --scrollbar-track: var(--background-secondary);
+}
+
+/* ==================== GLOBAL STYLES & OVERRIDES ==================== */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: linear-gradient(135deg, #1a1a2e, #26414a);
+    color: var(--text-primary);
+    font-family: 'Consolas', 'Aptos Mono', 'Monaco', 'Cascadia Code', monospace;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Prevent browser defaults from interfering */
+input, button, select, textarea {
+    font-family: inherit;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
+/* ==================== AUTHENTICATION STYLES ==================== */
+.auth-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(180deg, #141421, #294752);
+}
+
+.auth-form {
+    background: linear-gradient(300deg, rgb(46, 46, 46), rgb(30, 30, 30));
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-panel {
+    display: none;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.auth-panel.active {
+    display: flex;
+}
+
+.auth-panel h2 {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    color: var(--primary-color);
+    cursor: default;
+}
+
+.auth-panel input {
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 30px;
+    font-size: 16px;
+    background-color: var(--background-tertiary);
+    color: var(--text-primary);
+    transition: border-color 0.3s;
+}
+
+.auth-panel input:focus {
+    border-color: var(--primary-color);
+}
+
+.auth-switch {
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.auth-switch a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s;
+    cursor: pointer;
+}
+
+.auth-switch a:hover {
+    color: var(--primary-hover);
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-secondary);
+    transition: all 0.3s;
+}
+
+.auth-tab.active {
+    color: #03DAC6;
+    border-bottom: 2px solid #03DAC6;
+}
+
+.auth-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.app-logo {
+    text-align: center;
+    margin-bottom: 30px;
+    cursor: default;
+}
+
+.app-logo h1 {
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: #03DAC6;
+    margin-bottom: 5px;
+    cursor: default;
+}
+
+.app-logo p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: default;
+}
+
+.disabled-overlay {
+    background-color: rgba(0, 0, 0, 0.7);
+    color: var(--text-primary);
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+    margin-bottom: 15px;
+    border: 1px solid var(--error-color);
+    cursor: default;
+}
+
+.disabled-overlay h3 {
+    color: var(--error-color);
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+/* Username Panel Specific Styles */
+#username-panel {
+    display: none;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#username-panel.active {
+    display: flex;
+}
+
+#username-panel h3 {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    color: var(--primary-color);
+    cursor: default;
+    margin-bottom: 10px;
+}
+
+#username-panel p {
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+    cursor: default;
+}
+
+#choose-username {
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 30px;
+    font-size: 16px;
+    background-color: var(--background-tertiary);
+    color: var(--text-primary);
+    transition: border-color 0.3s;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+#choose-username:focus {
+    border-color: var(--primary-color);
+}
+
+#set-username-btn {
+    background-color: var(--primary-color);
+    color: var(--background-primary);
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s;
+    padding: 12px 20px;
+    width: 100%;
+}
+
+#set-username-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+/* ==================== GUEST LOGIN DISABLED STYLES ==================== */
+#guest-tab {
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+#guest-panel {
+    position: relative;
+    pointer-events: none;
+}
+
+#guest-panel .input-with-button {
+    opacity: 0.4;
+    filter: blur(1px);
+}
+
+#guest-panel p {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 250;
+    letter-spacing: 0.75px;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+    cursor: default;
+}
+
+/* ==================== MAIN APP LAYOUT ==================== */
+.app-container {
+    height: 100vh;
+    display: flex;
+}
+
+.app-main {
+    flex: 1;
+    display: flex;
+    height: 100vh;
+    position: relative;
+}
+
+/* ==================== SIDEBAR STYLES ==================== */
+.sidebar {
+    width: 280px;
+    height: 100%;
+    background-color: var(--background-secondary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    border-right: 1px solid var(--border-color);
+    flex-shrink: 0;
+    transform: translateX(0);
+    transition: transform 0.3s ease;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 20px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.sidebar-footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+.sidebar-footer a:hover {
+    color: var(--primary-hover);
+}
+
+/* ==================== USER PROFILE STYLES ==================== */
+.user-profile {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.user-avatar {
+    width: 51px;
+    height: 51px;
+    border-radius: 50%;
+    background-color: #03DAC6;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--background-primary);
+    flex-shrink: 0;
+}
+
+.user-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.user-name-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.user-name {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Email Verification Icon */
+.email-verification-icon {
+    position: relative;
+    cursor: pointer;
+}
+
+.verification-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: bold;
+    color: white;
+    transition: transform 0.2s ease;
+}
+
+.email-verification-icon:hover .verification-icon {
+    transform: scale(1.1);
+}
+
+.verification-icon.verified { background-color: var(--success-color); }
+.verification-icon.not-verified { background-color: var(--error-color); }
+
+/* Tooltip */
+.verification-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: var(--background-tertiary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    min-width: 200px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.email-verification-icon:hover .verification-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip-content { color: #fff; text-align: center; }
+#tooltip-status { display: block; font-weight: 500; margin-bottom: 6px; font-size: 13px; }
+.tooltip-email { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; word-break: break-all; }
+.tooltip-btn { width: 100%; padding: 6px 10px; background-color: var(--error-color); border-radius: 4px; color: white; font-size: 11px; cursor: pointer; transition: background-color 0.2s ease; }
+.tooltip-btn:hover { background-color: #d32f2f; }
+.tooltip-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Auth Actions */
+.auth-actions { display: flex; align-items: center; gap: 10px; }
+.logout-btn {
+    background: linear-gradient(135deg, #c0392b, #f52611, #c0392b);
+    color: white;
+    padding: 4px 6px;
+    border-radius: 15px;
+    cursor: pointer;
+    font-size: 12px;
+    flex: 1;
+}
+.logout-btn:hover { background: #c0392b; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);}
+.logout-btn:active { transform: translateY(0); }
+
+/* ==================== COLLAPSIBLE SECTIONS ==================== */
+.collapsible-section { border-bottom: 1px solid var(--border-color); }
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s;
+}
+.section-header:hover { background-color: var(--background-tertiary); }
+.section-header h3 { color: #03DAC6; font-size: 16px; margin: 0; }
+.section-controls { display: flex; gap: 8px; align-items: center; }
+.collapse-toggle {
+    background: none;
+    border: none;
+    color: #03DAC6;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.3s, color 0.3s;
+    padding: 2px 6px;
+    border-radius: 5px;
+}
+
+.collapse-toggle:hover {
+    background-color: rgba(3, 218, 198, 0.1);
+    color: #00B5A4;
+}
+.collapse-toggle.collapsed { transform: rotate(-90deg); }
+.section-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    max-height: 500px;
+    opacity: 1;
+}
+.section-content.collapsed { max-height: 0; opacity: 0; }
+
+/* ==================== RECENT CHATS & ROOMS SECTIONS ==================== */
+.recent-chats-list, .room-list {
+    padding: 0 20px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.recent-chat-item, .room-item {
+    padding: 10px;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.recent-chat-item:hover, .room-item:hover { background-color: var(--background-tertiary); }
+.room-item.active { background-color: #03DAC6; color: var(--background-primary); }
+.recent-chat-item.active { background-color: #03DAC6; color: var(--background-primary); }
+
+.chat-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.chat-name { font-weight: 500; display: flex; align-items: center; gap: 5px; }
+.chat-preview { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.chat-status { display: flex; flex-direction: column; align-items: flex-end; }
+.chat-time { font-size: 10px; color: var(--text-secondary); }
+
+.contact-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #03DAC6;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--background-primary);
+    flex-shrink: 0;
+}
+
+/* Online indicator */
+.recent-chat-item.online {
+    background: linear-gradient(to right, 
+        rgba(76, 175, 80, 0.25) 0%, 
+        var(--background-tertiary) 100%);
+    transition: all 0.3s ease;
+}
+
+.recent-chat-item.offline {
+    background-color: var(--background-tertiary);
+    transition: all 0.3s ease;
+}
+
+.refresh-btn {
+    background: none;
+    border: 1px solid #03DAC6;
+    color: #03DAC6;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.3s;
+    font-size: 14px;
+}
+
+.refresh-btn:hover {
+    background-color: #03DAC6;
+    color: var(--background-primary);
+}
+
+/* ==================== CHAT AREA STYLES ==================== */
+.chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: linear-gradient(180deg, #20192b, var(--background-secondary));
+    min-height: 0;
+}
+
+.chat-header {
+    flex-shrink: 0;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--background-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-header h2 {
+    color: var(--text-primary);
+    margin-bottom: 5px;
+}
+
+.app-branding {
+    font-weight: 1000;
+    font-size: 36px;
+    color: #03DAC6;
+}
+
+.header-left {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+#current-call-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.call-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+	background: linear-gradient(135deg, #1a1a2e, #26414a);
+}
+
+.video-container {
+    position: relative;
+    width: 400px;
+    height: 300px;
+    background-color: var(--background-secondary);
+    border-radius: 15px;
+    overflow: hidden;
+    margin: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.video-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.video-label {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 14px;
+}
+
+.call-controls {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.control-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    background-color: var(--surface-color);
+    color: var(--text-primary);
+    transition: all 0.3s;
+}
+
+.control-btn:hover {
+    transform: scale(1.1);
+}
+
+.control-btn.end-call {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.control-btn.muted {
+    background-color: var(--error-color);
+    color: white;
+}
+
+/* ==================== SPECIAL COMPONENTS ==================== */
+/* Input with Button Inside */
+.input-with-button {
+    display: flex;
+    align-items: center;
+    background-color: var(--background-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 30px;
+    padding: 2px;
+    transition: border-color 0.3s;
+}
+.input-with-button:focus-within { border-color: var(--primary-color); }
+.input-with-button input { flex: 1; }
+.input-with-button button {
+    background-color: #03DAC6;
+    color: var(--background-primary);
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s;
+    padding: 8px 17px;
+    margin-right: 8px;
+}
+
+.input-with-button button:hover {
+    background-color: #00B5A4;
+}
+
+/* Loading Spinner */
+.spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.button-loading { cursor: not-allowed; opacity: 0.7; }
+
+/* ==================== IN-APP NOTIFICATION SYSTEM STYLING ==================== */
+/* Notification Container */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Base Notification Styles */
+.notification {
+    background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 16px 20px;
+    min-width: 300px;
+    max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    opacity: 0 !important;
+    transform: translateX(100%) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* --- Animation State --- */
+.notification.show {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+}
+
+/* --- Notification Icon --- */
+.notification-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: bold;
+    color: white;
+}
+
+/* --- Notification Content --- */
+.notification-content {
+    flex: 1;
+}
+
+.notification-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #fff;
+    font-size: 14px;
+}
+
+.notification-message {
+    color: #e0e0e0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* --- Close Button --- */
+.notification-close {
+    background: none;
+    border: none;
+    color: #9e9e9e;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.notification-close:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+/* ==================== NOTIFICATION TYPE STYLES ==================== */
+
+/* --- Success --- */
+.notification.success {
+    border-left: 4px solid #4caf50;
+}
+
+.notification.success .notification-icon {
+    background-color: #4caf50 !important;
+}
+
+.notification.success .notification-icon::before {
+    content: "✓" !important;
+}
+
+/* --- Error --- */
+.notification.error {
+    border-left: 4px solid #f44336;
+}
+
+.notification.error .notification-icon {
+    background-color: #f44336 !important;
+}
+
+.notification.error .notification-icon::before {
+    content: "✕" !important;
+}
+
+/* --- Warning --- */
+.notification.warning {
+    border-left: 4px solid #ff9800;
+}
+
+.notification.warning .notification-icon {
+    background-color: #ff9800 !important;
+}
+
+.notification.warning .notification-icon::before {
+    content: "!" !important;
+}
+
+/* --- Info --- */
+.notification.info {
+    border-left: 4px solid #2196f3;
+}
+
+.notification.info .notification-icon {
+    background-color: #2196f3 !important;
+}
+
+.notification.info .notification-icon::before {
+    content: "i" !important;
+}
+
+/* ==================== CALL MODAL STYLES ==================== */
+#incoming-call-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+#incoming-call-modal.show {
+    display: flex;
+}
+
+.caller-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.caller-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--background-primary);
+    margin-bottom: 15px;
+}
+
+.caller-name {
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.call-actions {
+    display: flex;
+    gap: 20px;
+}
+
+.call-btn {
+    padding: 15px 30px;
+    border-radius: 30px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
+}
+
+.call-btn.accept {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.call-btn.accept:hover {
+    background-color: #388E3C;
+}
+
+.call-btn.reject {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.call-btn.reject:hover {
+    background-color: #D32F2F;
+}
+
+/* ==================== SCROLLBAR STYLING ==================== */
+/* For Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* For Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Apply to specific elements if needed */
+.messages, .sidebar, .recent-chats-list, .section-content {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* ==================== MOBILE RESPONSIVENESS ==================== */
+@media (max-width: 768px) {
+    .sidebar { 
+        width: 200px; 
+    }
+    .user-avatar { 
+        display: none; 
+    }
+    .app-branding { 
+        display: none; 
+    }
+}
+
+@media (max-width: 480px) {
+    .app-main { 
+        flex-direction: column; 
+    }
+    
+	.mobile-menu-toggle {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		position: fixed;
+		top: 15px;
+		right: 15px;
+		z-index: 1001;
+		background-color: #03DAC6;
+		color: var(--background-primary);
+		border: none;
+		border-radius: 50%;
+		width: 50px;
+		height: 50px;
+		font-size: 24px;
+		cursor: pointer;
+		transition: all 0.3s;
+		box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+	}
+
+	.mobile-menu-toggle:hover { 
+		background-color: #00B5A4; 
+	}
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 280px;
+        z-index: 1000;
+        transform: translateX(-100%);
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    
+    .chat-area {
+        width: 100%;
+        margin-left: 0;
+    }
+    
+    .video-container {
+        width: 300px;
+        height: 225px;
+    }
+    
+    .message-input { 
+        padding: 10px; 
+    }
+    
+    .section-header { 
+        padding: 12px 15px; 
+    }
+    
+    .section-header h3 { 
+        font-size: 14px; 
+    }
+    
+    .recent-chats-list, .section-content { 
+        padding: 0 15px 10px; 
+    }
+}
+/* ==================== SCREEN SHARING STYLES ==================== */
+#screen-share-btn.active {
+    background-color: var(--success-color);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+}
+
+#screen-share-btn:hover {
+    background-color: var(--success-color);
+    color: white;
+}
+
+/* Screen sharing indicator */
+.screen-share-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: var(--success-color);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 10;
+    display: none;
+}
+
+.screen-share-indicator.active {
+    display: block;
+}    ill give u the code for the othe r in a second  
